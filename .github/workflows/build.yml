@@ -14,11 +14,15 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout ImmortalWrt source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: immortalwrt/immortalwrt
-          ref: ${{ env.IMMORTALWRT_COMMIT }}
           fetch-depth: 0
+
+      - name: Switch to target commit ${{ env.IMMORTALWRT_COMMIT }}
+        run: |
+          git checkout ${{ env.IMMORTALWRT_COMMIT }}
+          git log -1
 
       - name: Install build dependencies
         run: |
@@ -31,17 +35,18 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Generate .config
+      - name: Generate .config for x86_64
         run: |
-          make menuconfig -j1 << EOF
-          ${{ env.TARGET }}
-          ${{ env.SUBTARGET }}
-          ${{ env.PROFILE }}
-          EOF
+          # 生成基础配置，锁定x86_64
           make defconfig
           sed -i 's/# CONFIG_PACKAGE_kmod-oaf is not set/CONFIG_PACKAGE_kmod-oaf=m/' .config
           sed -i 's/# CONFIG_PACKAGE_appfilter is not set/CONFIG_PACKAGE_appfilter=m/' .config
           sed -i 's/# CONFIG_PACKAGE_luci-app-oaf is not set/CONFIG_PACKAGE_luci-app-oaf=m/' .config
+          # 强制设定target
+          sed -i 's/CONFIG_TARGET_.*=y//' .config
+          echo "CONFIG_TARGET_x86=y" >> .config
+          echo "CONFIG_TARGET_x86_64=y" >> .config
+          echo "CONFIG_TARGET_x86_64_GENERIC=y" >> .config
           make defconfig
 
       - name: Download source
