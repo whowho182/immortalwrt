@@ -1,0 +1,57 @@
+name: Build ImmortalWrt x86_64 OAF apk
+on:
+  workflow_dispatch:
+
+env:
+  TARGET: x86
+  SUBTARGET: x86_64
+  PROFILE: generic
+  IMMORTALWRT_COMMIT: ae202f7f90
+  PACKAGES: kmod-oaf appfilter luci-app-oaf
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout ImmortalWrt source
+        uses: actions/checkout@v4
+        with:
+          repository: immortalwrt/immortalwrt
+          ref: ${{ env.IMMORTALWRT_COMMIT }}
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential libncurses-dev gawk flex bison openssl libssl-dev dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf git wget curl rsync unzip python3-pip
+
+      - name: Add OpenAppFilter feeds
+        run: |
+          echo "src-git openappfilter https://github.com/destan19/OpenAppFilter.git" >> feeds.conf.default
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Generate .config
+        run: |
+          make menuconfig -j1 << EOF
+          ${{ env.TARGET }}
+          ${{ env.SUBTARGET }}
+          ${{ env.PROFILE }}
+          EOF
+          make defconfig
+          sed -i 's/# CONFIG_PACKAGE_kmod-oaf is not set/CONFIG_PACKAGE_kmod-oaf=m/' .config
+          sed -i 's/# CONFIG_PACKAGE_appfilter is not set/CONFIG_PACKAGE_appfilter=m/' .config
+          sed -i 's/# CONFIG_PACKAGE_luci-app-oaf is not set/CONFIG_PACKAGE_luci-app-oaf=m/' .config
+          make defconfig
+
+      - name: Download source
+        run: make download -j$(nproc)
+
+      - name: Compile packages (apk output)
+        run: make -j$(nproc) package/OpenAppFilter/compile V=s
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: OAF-apk-x86_64
+          path: bin/packages/x86_64/openappfilter/*.apk
